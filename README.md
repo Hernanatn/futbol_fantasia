@@ -1,4 +1,4 @@
-#Fútbol Fantasía
+# Fútbol Fantasía
 
 [![Hecho por Chaska](https://img.shields.io/badge/hecho_por-Ch'aska-303030.svg)](https://cajadeideas.ar)
 [![Versión: Alpha v0.1.0](https://img.shields.io/badge/version-alpha_v0.1.0-orange.svg)](https://github.com/hernanatn/github.com/hernanatn/futbol_fantasia/releases/latest)
