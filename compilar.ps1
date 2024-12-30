@@ -8,6 +8,8 @@ cmake --build compilar;
 Remove-Item -Force -Recurse "distribucion/*";
 
 Compress-Archive -Path "compilar/Debug/*" -DestinationPath "distribucion/ff.zip"
+Compress-Archive -Path "data/publico/recursos" -Update -DestinationPath "distribucion/ff.zip"
+
 iscc instalador/instalador.iss
 
 if($correr){
