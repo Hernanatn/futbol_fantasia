@@ -1,3 +1,9 @@
 [submodule "externos/errores--"]
 	path = externos/errores--
 	url = https://github.com/Hernanatn/errores--
+[submodule "externos/raylib"]
+	path = externos/raylib
+	url = https://github.com/raysan5/raylib
+[submodule "externos/raygui"]
+	path = externos/raygui
+	url = https://github.com/raysan5/raygui
