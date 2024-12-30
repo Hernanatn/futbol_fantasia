@@ -10,5 +10,6 @@ Compress-Archive -Path "compilar/Debug/*" -DestinationPath "distribucion/ff.zip"
 iscc instalador/instalador.iss
 
 if($correr){
-futbol_fantasia.exe 
+Expand-Archive -Path "distribucion/ff.zip" -DestinationPath "distribucion/ff"
+distribucion/ff/futbol_fantasia.exe 
 }
