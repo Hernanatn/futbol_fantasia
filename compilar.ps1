@@ -14,5 +14,7 @@ iscc instalador/instalador.iss
 
 if($correr){
 Expand-Archive -Path "distribucion/ff.zip" -DestinationPath "distribucion/ff";
-distribucion/ff/futbol_fantasia.exe;
+cd distribucion/ff; 
+./futbol_fantasia.exe;
+cd ../..;
 }
