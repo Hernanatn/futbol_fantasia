@@ -12,6 +12,7 @@
 #include "estilos.h"
 /*</estilos>*/
 
+#include <conceptos.hpp>
 #include "Error.hpp"
 #include "Resultado.hpp"
 #include "raylib.h"
@@ -31,7 +32,7 @@ public:
     x = T{};
     y = T{};
   };
-  Vector2d(T x, T y) requires con_constructor_por_defecto<T>{
+  Vector2d(T x, T y) requires utiles::genericos::con_constructor_por_defecto<T>{
     x = x;
     y = y;
   };

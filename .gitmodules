@@ -10,3 +10,6 @@
 [submodule "externos/arenas++"]
 	path = externos/arenas++
 	url = http://github.com/hernanatn/arenas.git
+[submodule "externos/utiles.cpp"]
+	path = externos/utiles.cpp
+	url = https://github.com/Hernanatn/utiles.cpp
