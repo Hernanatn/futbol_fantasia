@@ -5,6 +5,7 @@
 #include <map>
 #include <queue>
 #include <sstream>
+#include <string>
 #include <tuple>
 
 /*<estilos>*/
@@ -12,11 +13,13 @@
 /*</estilos>*/
 
 #include "Error.hpp"
+#include "Resultado.hpp"
 #include "raylib.h"
 #define RAYGUI_IMPLEMENTATION
 #include "raygui.h"
 #include "raymath.h"
 
+#include "arenas++.hpp"
 #include "errores--.hpp"
 /*</dependencias>*/
 
@@ -24,11 +27,11 @@ template <typename T> struct Vector2d {
   T x, y;
 
 public:
-  Vector2d() {
+  Vector2d(){
     x = T{};
     y = T{};
   };
-  Vector2d(T x, T y) {
+  Vector2d(T x, T y) requires con_constructor_por_defecto<T>{
     x = x;
     y = y;
   };
@@ -50,25 +53,45 @@ template <typename T> struct Vector4d {
   T x, y, z, w;
 };
 
-/*<controles>*/ namespace controles {
-template <typename T> struct Accion {
-protected:
-  T accion;
+/*<estado>*/ namespace estado {
+enum Estado {
+  // Errores. Enteros negativos explícitos.
+  SALIR = -1,
 
-public:
-  Accion(T c) { accion = c; };
-  T operator()() const { return accion; };
-  bool operator==(Accion otro) { return otro() == this->accion; };
-  operator bool() { return this->accion != 0; };
+  // Nada. 0, NULL, nullptr.
+  NADA,
+
+  // Ciclos principales. Enteros positivos implícitos < 100
+  INICIAR, // Lanzador. autenticación y carga/descarga de recursos.
+  JUGAR,   // Ciclo principal del juego.
+  LIMPIAR, // Limpieza.
+  CERRAR,  // Salida.
+
+  // Menúes. Enteros positivos implícitos >= 100.
+  MENU = 100,
+  AYUDA,
+  PANTALLA,
+  AUDIO,
+  CREDITOS,
+
 };
 
-const Accion SALIR = Accion(-1);
-const Accion NADA = Accion(0);
-const Accion JUGAR = Accion(1);
-const Accion PAUSAR = Accion(2);
-const Accion CONTINUAR = Accion(3);
-const Accion CONFIGURACION = Accion(3);
-}; // namespace controles
+// errores
+namespace errores {
+struct VentanaNoEstaLista : public err::Error {
+  VentanaNoEstaLista(std::string msj = "") {
+    this->codigo = err::FATAL;
+    this->mensaje = "No se pudo iniciar la ventana. " + msj;
+  };
+};
+struct AudioNoEstaListo : public err::Error {
+  AudioNoEstaListo(std::string msj = "") {
+    this->codigo = err::FATAL;
+    this->mensaje = "No se pudo iniciar el audios. " + msj;
+  };
+};
+} // namespace errores
+}; // namespace estado
 
 /*<pantalla>*/ namespace pantalla {
 struct Resolucion {
@@ -119,11 +142,13 @@ struct Sesion {};
 struct Juego {
 private:
   const char *titulo;
-  std::stringstream log;
+  std::stringstream debug;
+  std::stringstream error;
   pantalla::RESOLUCION resolucion;
 
   bool incializó = false;
   bool cargóRecursos = false;
+  estado::Estado estado = estado::NADA;
 
   Sesion sesion{};
 
@@ -137,8 +162,8 @@ private:
 
   err::Error actualizarResolucion() {
     if (!IsWindowReady()) {
-      auto e = err::Fatal("No se pudo iniciar la ventana.");
-      log << e;
+      auto e = estado::errores::VentanaNoEstaLista("La ventana debe haber sido inicializada (generalmente llamando `Juego.Inicializar()`) para poder asignar la resolución.");
+      this->error << e;
       return e;
     }
 
@@ -149,15 +174,15 @@ private:
   };
 
 public:
-  Vector2 Monitor() const {
+  Vector2d<float> Monitor() const {
     const int monitor =
         GetCurrentMonitor(); // En verdad se debería constatar que
-                             // `IsWidnowReady`; pero por retorna 0 si se llama
+                             // `IsWidnowReady`; pero por defecto retorna 0 si se llama
                              // antes, el cual es el comportamiento deseado en
                              // la amplia mayoría de los casos (el primer
                              // monitor de la lista de monitores disponibles,
                              // que puede ser el único).
-    return Vector2(GetMonitorWidth(monitor), GetMonitorHeight(monitor));
+    return Vector2d<float>(GetMonitorWidth(monitor), GetMonitorHeight(monitor));
   }
   pantalla::Resolucion Resolucion() const { return pantalla::Res(resolucion); }
 
@@ -170,13 +195,13 @@ public:
     this->resolucion = pantalla::RINICIAL;
   }
 
-  bool EstaListo() { return (incializó & cargóRecursos); }
+  bool EstaListo() { return this->estado >= estado::JUGAR; }
 
   err::Error Inicializar() {
     InitWindow(Resolucion().ancho, Resolucion().alto, this->titulo);
     if (!IsWindowReady()) {
-      auto e = err::Fatal("No se pudo iniciar la ventana.");
-      log << e;
+      auto e = estado::errores::VentanaNoEstaLista("La ventana no incializó. IsWindowReady() devuelve 0 inmediatamente después de llamar InitWindow(). Error de Raylib, el SO o la máquina.");
+      this->error << e;
       return e;
     }
     GuiLoadStyle("recursos\\temas\\ff.rgs");
@@ -184,15 +209,15 @@ public:
 
     InitAudioDevice();
     if (!IsAudioDeviceReady()) {
-      auto e = err::Generico("No se pudo iniciar el audio.");
-      log << e;
+      auto e = estado::errores::AudioNoEstaListo("El audio no incializó. IsAudioReady() devuelve 0 inmediatamente después de llamar InitAudioDevice(). Error de Raylib, el SO o la máquina.");
+      this->error << e;
       return e;
     }
 
     auto [resolucionObjetivo, error] = adivinarResolucionAdecuada()();
     if (error) {
       error.agregarMensaje("// En Juego->Inicializar().");
-      log << error;
+      this->error << error;
       return error;
     }
 
@@ -200,30 +225,61 @@ public:
     actualizarResolucion();
 
     SetExitKey(NULL);
-    incializó = true;
+
+    this->estado = estado::INICIAR;
+
+    while (this->estado == estado::INICIAR) {
+      BeginDrawing();
+      ClearBackground(NEGRO);
+      std::stringstream mensaje;
+      mensaje << "Fútbol Fantasía v0.0.1" << "\n"
+              << " | Resolución: " << Resolucion().ancho << " x "
+              << Resolucion().alto << "\n";
+
+      int codigo = GuiMessageBox(
+          Rectangle{
+              float(Resolucion().ancho / 2) - float(Resolucion().ancho / 6),
+              float(Resolucion().alto / 2) - float(Resolucion().alto / 6),
+              float(Resolucion().ancho / 3), float(Resolucion().alto / 3)},
+          titulo, mensaje.str().c_str(), "Jugar;Resolución;Salir");
+
+      switch (codigo) {
+      case 1:
+        this->estado = estado::JUGAR;
+        break;
+      case 2:
+        siguienteResolucion();
+        break;
+      case 3:
+      case 0:
+        this->estado = estado::SALIR;
+        break;
+      };
+      EndDrawing();
+    };
     return err::Exito("Juego incializado correctamente.");
   };
 
   err::Error CargarRecursos() {
-    if (!incializó) {
+    if (this->estado < estado::INICIAR) {
       auto e = err::Fatal(
           "El juego debe estar inicializado para cargar los recursos");
-      log << e;
+      this->error << e;
       return e;
     }
 
-    cargóRecursos = true;
+    this->estado = estado::JUGAR;
     return err::Exito("Recursos cargados satisfactoriamente. Juego Listo.");
   }
   err::Error DescargarRecursos() {
-    if (!incializó) {
+    if (this->estado < estado::INICIAR) {
       auto e = err::Fatal(
           "El juego debe estar inicializado para cargar los recursos");
-      log << e;
+      this->error << e;
       return e;
     }
 
-    cargóRecursos = false;
+    this->estado = estado::CERRAR;
     return err::Exito("Recursos descargados satisfactoriamente.");
   }
 
@@ -232,8 +288,9 @@ public:
     pantalla::RESOLUCION r = resolucion;
 
     if (!IsWindowReady()) {
-      e = err::Fatal("No se pudo iniciar la ventana.");
-      log << e;
+      auto e = estado::errores::VentanaNoEstaLista("La ventana debe haber sido inicializada (generalmente llamando `Juego.Inicializar()`) para poder adivinar la resolución.");
+      this->error << e;
+      return res::Resultado<pantalla::RESOLUCION>(resolucion, e);
     }
     auto monitor = Monitor();
     const int anchoPantalla = monitor.x;
@@ -286,9 +343,7 @@ public:
     return actualizarResolucion();
   };
 
-  controles::Accion<int> Actualizar(std::queue<controles::Accion<int>>) {
-    return controles::NADA;
-  };
+  estado::Estado Actualizar() { return estado::NADA; };
 
   void Renderizar() {};
 
@@ -298,114 +353,49 @@ public:
     if (!EstaListo()) {
       return err::Fatal("El juego debe estar listo para poder Correr.");
     }
-    controles::Accion estado = controles::NADA;
+    auto estado = estado::INICIAR;
     std::stringstream teclas;
 
     while (!WindowShouldClose()) {
       int tecla = GetKeyPressed();
-      if (IsKeyPressed(tecla)){
-          teclas << tecla << "\n";
-      }
-      BeginDrawing();
-      ClearBackground(NEGRO);
-
-    
-    Iniciar:
-      std::stringstream mensaje;
-      mensaje << "Fútbol Fantasía v0.0.1" << "\n"
-              << teclas.str()
-              << " | Resolución: " << Resolucion().ancho << " x "
-              << Resolucion().alto << "\n";
-
-      if (!estado) {
-        int codigo = GuiMessageBox(
-            Rectangle{
-                float(Resolucion().ancho / 2) - float(Resolucion().ancho / 6),
-                float(Resolucion().alto / 2) - float(Resolucion().alto / 6),
-                float(Resolucion().ancho / 3), float(Resolucion().alto / 3)},
-            titulo, mensaje.str().c_str(), "Jugar;Configuración;Salir");
-
-        switch (codigo) {
-        case 1:
-          estado = controles::JUGAR;
-
-          // goto Jugar;
-          break;
-        case 2:
-          estado = controles::CONFIGURACION;
-          siguienteResolucion();
-
-          // goto Configuracion;
-          estado = controles::NADA;
-          break;
-        case 3:
-        case 0:
-          estado = controles::SALIR;
-          goto Salir;
-          break;
-        };
+      if (IsKeyPressed(tecla)) {
+        teclas << tecla << "\n";
       }
 
-    Configuracion:
-      while (estado == controles::CONFIGURACION) {
-        if (IsKeyPressed(KEY_ESCAPE)) {
-          estado = controles::JUGAR;
-
-          goto Jugar;
-        }
-
-        int codigo = GuiMessageBox(
-            Rectangle{
-                float(Resolucion().ancho / 2) - float(Resolucion().ancho / 6),
-                float(Resolucion().alto / 2) - float(Resolucion().alto / 6),
-                float(Resolucion().ancho / 3), float(Resolucion().alto / 3)},
-            titulo, mensaje.str().c_str(), "Jugar;Configuración;Salir");
-
-        switch (codigo) {
-        case 1:
-          estado = controles::JUGAR;
-
-          // goto Jugar;
-          break;
-        case 2:
-          estado = controles::CONFIGURACION;
-          siguienteResolucion();
-
-          // goto Configuracion;
-          estado = controles::NADA;
-          break;
-        case 3:
-        case 0:
-          estado = controles::SALIR;
-          goto Salir;
-          break;
-        };
-      }
     Jugar:
-      while (estado == controles::JUGAR) {
+      while (estado == estado::JUGAR) {
+        BeginDrawing();
+        ClearBackground(NEGRO);
+        GuiLabel(Rectangle{0, 0, 100, 100}, "JUGAR");
         if (IsKeyPressed(KEY_ESCAPE)) {
-          estado = controles::PAUSAR;
-          goto Pausar;
+          estado = estado::MENU;
+          EndDrawing();
+          goto Menu;
         }
+        EndDrawing();
       }
-    Pausar:
-      while (estado == controles::PAUSAR) {
+    Menu:
+      while (estado == estado::MENU) {
+        BeginDrawing();
+        ClearBackground(NEGRO);
+        GuiLabel(Rectangle{0, 0, 100, 100}, "MENU");
         if (IsKeyPressed(KEY_ESCAPE)) {
-          estado = controles::JUGAR;
+          estado = estado::JUGAR;
+          EndDrawing();
           goto Jugar;
         }
+        EndDrawing();
       }
     Salir:
-      if (estado == controles::SALIR) {
+      if (estado == estado::SALIR) {
         break;
       }
-      EndDrawing();
     }
     return err::Exito();
   }
 
   void Cerrar() {
-    std::cout << log.str() << std::endl;
+    std::cout << this->error.str() << std::endl;
     CloseAudioDevice();
     CloseWindow();
   };
@@ -426,14 +416,15 @@ int main(int argc, char **argv) {
   error = juego.CargarRecursos();
   if (error) {
     std::cout << error << std::endl;
-    goto cerrar;
+    goto limpiar;
   }
   error = juego.Correr();
   if (error) {
     std::cout << error << std::endl;
-    goto cerrar;
+    goto limpiar;
   }
 
+limpiar:
   error = juego.DescargarRecursos();
   if (error) {
     std::cout << error << std::endl;
