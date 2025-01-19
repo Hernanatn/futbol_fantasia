@@ -7,3 +7,6 @@
 [submodule "externos/raygui"]
 	path = externos/raygui
 	url = https://github.com/raysan5/raygui
+[submodule "externos/arenas++"]
+	path = externos/arenas++
+	url = http://github.com/hernanatn/arenas.git
